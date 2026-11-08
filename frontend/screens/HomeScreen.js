@@ -150,9 +150,7 @@ export default function HomeScreen({ navigation }) {
             text: 'Answer',
             onPress: () => {
               dismissGuideNotification();
-
-              // Actual video/audio call navigation
-              // will be connected with the backend later.
+              navigation.navigate('Guides');
             },
           },
         ]
@@ -161,13 +159,7 @@ export default function HomeScreen({ navigation }) {
       const guideName = guideNotification.guideName;
 
       dismissGuideNotification();
-
-      // Actual chat navigation will be connected later.
-
-      Alert.alert(
-        `Message from ${guideName}`,
-        'Your Guide sent you a message.'
-      );
+      navigation.navigate('Guides');
     }
   };
 
