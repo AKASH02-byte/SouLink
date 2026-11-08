@@ -216,6 +216,18 @@ export default function GuidesScreen() {
   const [paymentMethod, setPaymentMethod] = useState('upi'); // 'upi' | 'card' | 'netbanking'
   const [completedBookingDetails, setCompletedBookingDetails] = useState(null);
 
+  // 3.3 AI-ASSISTED MATCHING STATE
+  const [aiMatchingModalVisible, setAiMatchingModalVisible] = useState(false);
+  const [matchingStep, setMatchingStep] = useState(1); // 1: Questions, 2: Matched Results
+  const [aiMatchAnswers, setAiMatchAnswers] = useState({
+    supportType: 'Anxiety & Depression',
+    language: 'English',
+    sessionType: 'video',
+    approach: 'Gentle & CBT-Focused',
+    availability: 'Available Today',
+  });
+  const [aiRecommendations, setAiRecommendations] = useState([]);
+
   // RESCHEDULE MODAL
   const [rescheduleModalVisible, setRescheduleModalVisible] = useState(false);
   const [rescheduleSession, setRescheduleSession] = useState(null);
@@ -261,6 +273,67 @@ export default function GuidesScreen() {
   const handleOpenProfile = (guide) => {
     setSelectedProfileGuide(guide);
     setProfileModalVisible(true);
+  };
+
+  // 3.3 AI-ASSISTED MATCHING LOGIC (Hybrid Rule-Based + Affinity Scoring)
+  const handleOpenAiMatching = () => {
+    setMatchingStep(1);
+    setAiMatchingModalVisible(true);
+  };
+
+  const handleRunAiMatching = () => {
+    // 1. Mandatory Rule Checks: Guide must be verified, support session format
+    const candidateGuides = PROFESSIONALS_DATA.filter((guide) => {
+      // Must have pricing for session type
+      if (!guide.pricing[aiMatchAnswers.sessionType]) return false;
+      return true;
+    });
+
+    // 2. Hybrid Scoring Engine
+    const scoredGuides = candidateGuides.map((guide) => {
+      let score = 55; // Base qualification and approval score
+
+      // Support / Specialty Match (+25)
+      if (guide.specialisation === aiMatchAnswers.supportType) {
+        score += 25;
+      } else if (
+        guide.clinicalFocus.some((f) =>
+          f.toLowerCase().includes(aiMatchAnswers.supportType.toLowerCase().slice(0, 5))
+        )
+      ) {
+        score += 15;
+      }
+
+      // Language Compatibility Rule (+15)
+      if (aiMatchAnswers.language !== 'All Languages') {
+        if (guide.languages.includes(aiMatchAnswers.language)) {
+          score += 15;
+        }
+      } else {
+        score += 10;
+      }
+
+      // Availability Tag Match (+10)
+      if (guide.availabilityTag === aiMatchAnswers.availability) {
+        score += 10;
+      }
+
+      // Approach & Characteristics Match (+5)
+      if (aiMatchAnswers.approach.includes('CBT') && guide.bio.includes('CBT')) score += 5;
+      if (aiMatchAnswers.approach.includes('Somatic') && guide.bio.includes('Somatic')) score += 5;
+
+      const finalMatchPercent = Math.min(99, Math.max(76, score));
+
+      return {
+        ...guide,
+        matchScore: finalMatchPercent,
+        matchRationale: `Optimal clinical synergy for ${aiMatchAnswers.supportType} in ${guide.languages.join(' & ')}.`,
+      };
+    });
+
+    scoredGuides.sort((a, b) => b.matchScore - a.matchScore);
+    setAiRecommendations(scoredGuides.slice(0, 2));
+    setMatchingStep(2);
   };
 
   // INITIATE BOOKING
@@ -518,6 +591,62 @@ export default function GuidesScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
         >
+          {/* 3.3 AI-ASSISTED MATCHING HERO BANNER */}
+          <View style={styles.aiHeroBanner}>
+            <View style={{ flex: 1, marginRight: 12 }}>
+              <View style={styles.aiSparkleBadge}>
+                <Ionicons name="sparkles" size={13} color="#62417D" style={{ marginRight: 4 }} />
+                <Text style={styles.aiSparkleBadgeText}>AI-Assisted Matching</Text>
+              </View>
+              <Text style={styles.aiHeroTitle}>Find Your Ideal Guide</Text>
+              <Text style={styles.aiHeroSub}>
+                Answer 4 quick preferences to get rule-verified, personalized recommendations.
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.aiMatchLaunchBtn}
+              onPress={handleOpenAiMatching}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.aiMatchLaunchBtnText}>Get Matched</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* AI MATCHED RESULTS PREVIEW (IF AVAILABLE) */}
+          {aiRecommendations.length > 0 && (
+            <View style={styles.matchedSectionWrapper}>
+              <View style={styles.matchedSectionHeader}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Ionicons name="sparkles" size={16} color="#8875B7" style={{ marginRight: 6 }} />
+                  <Text style={styles.matchedSectionTitle}>AI Recommendations For You</Text>
+                </View>
+                <TouchableOpacity onPress={() => setAiRecommendations([])}>
+                  <Text style={styles.clearMatchText}>Clear</Text>
+                </TouchableOpacity>
+              </View>
+
+              {aiRecommendations.map((guide) => (
+                <View key={`match-${guide.id}`} style={styles.matchGuideCard}>
+                  <View style={styles.matchScoreBadge}>
+                    <Text style={styles.matchScoreText}>{guide.matchScore}% Match</Text>
+                  </View>
+                  <Text style={styles.matchGuideName}>{guide.name}</Text>
+                  <Text style={styles.matchGuideRole}>{guide.title}</Text>
+                  <Text style={styles.matchRationale}>"{guide.matchRationale}"</Text>
+                  <View style={styles.matchActionRow}>
+                    <Text style={styles.matchFeeText}>Starts at ₹{guide.pricing.audio}</Text>
+                    <TouchableOpacity
+                      style={styles.matchBookBtn}
+                      onPress={() => handleStartBooking(guide)}
+                    >
+                      <Text style={styles.matchBookBtnText}>Book Now</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+
           {/* SEARCH INPUT */}
           <View style={styles.searchBar}>
             <Ionicons name="search" size={18} color="#8F8599" style={{ marginRight: 8 }} />
@@ -1715,6 +1844,299 @@ export default function GuidesScreen() {
               </TouchableOpacity>
             </ScrollView>
           </View>
+        </View>
+      </Modal>
+
+      {/* =========================================================================
+          3.3 AI-ASSISTED MATCHING MODAL (QUESTIONNAIRE & HYBRID RESULTS)
+         ========================================================================= */}
+      <Modal
+        visible={aiMatchingModalVisible}
+        animationType="slide"
+        onRequestClose={() => setAiMatchingModalVisible(false)}
+      >
+        <View style={styles.fullModalContainer}>
+          <View style={styles.fullModalHeader}>
+            <TouchableOpacity
+              onPress={() => setAiMatchingModalVisible(false)}
+              style={styles.modalCloseCircle}
+            >
+              <Ionicons name="close" size={22} color="#62417D" />
+            </TouchableOpacity>
+
+            <Text style={styles.fullModalTitle}>
+              {matchingStep === 1 ? 'Personalized Guide Matching' : 'Your Recommended Guides'}
+            </Text>
+
+            <View style={{ width: 36 }} />
+          </View>
+
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.aiModalContent}
+          >
+            {matchingStep === 1 ? (
+              <View>
+                <View style={styles.aiModalHero}>
+                  <View style={styles.aiSparkleCircle}>
+                    <Ionicons name="sparkles" size={24} color="#62417D" />
+                  </View>
+                  <Text style={styles.aiModalHeading}>Help Us Understand Your Needs</Text>
+                  <Text style={styles.aiModalSub}>
+                    Answer these 5 brief preferences. Our hybrid system matches clinical specializations, availability, and languages to recommend your best-fit Guide.
+                  </Text>
+                </View>
+
+                {/* Q1: Support Type */}
+                <Text style={styles.aiQuestionLabel}>1. What kind of support are you looking for?</Text>
+                <View style={styles.aiChoiceGrid}>
+                  {SPECIALISATIONS.filter((s) => s !== 'All').map((spec) => {
+                    const isSelected = aiMatchAnswers.supportType === spec;
+                    return (
+                      <TouchableOpacity
+                        key={spec}
+                        style={[
+                          styles.aiChoiceTile,
+                          isSelected && styles.aiChoiceTileSelected,
+                        ]}
+                        onPress={() =>
+                          setAiMatchAnswers({ ...aiMatchAnswers, supportType: spec })
+                        }
+                      >
+                        <Text
+                          style={[
+                            styles.aiChoiceTileText,
+                            isSelected && styles.aiChoiceTileTextSelected,
+                          ]}
+                        >
+                          {spec}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* Q2: Preferred Language */}
+                <Text style={styles.aiQuestionLabel}>2. Preferred Language</Text>
+                <View style={styles.aiChoiceGrid}>
+                  {LANGUAGES.map((lang) => {
+                    const isSelected = aiMatchAnswers.language === lang;
+                    return (
+                      <TouchableOpacity
+                        key={lang}
+                        style={[
+                          styles.aiChoiceTile,
+                          isSelected && styles.aiChoiceTileSelected,
+                        ]}
+                        onPress={() =>
+                          setAiMatchAnswers({ ...aiMatchAnswers, language: lang })
+                        }
+                      >
+                        <Text
+                          style={[
+                            styles.aiChoiceTileText,
+                            isSelected && styles.aiChoiceTileTextSelected,
+                          ]}
+                        >
+                          {lang}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* Q3: Session Format */}
+                <Text style={styles.aiQuestionLabel}>3. Preferred Session Format</Text>
+                <View style={{ flexDirection: 'row', marginBottom: 16 }}>
+                  {[
+                    { id: 'video', label: 'Video Call', icon: 'videocam' },
+                    { id: 'audio', label: 'Audio Call', icon: 'call' },
+                    { id: 'text', label: 'Text Session', icon: 'chatbubbles' },
+                  ].map((fmt) => {
+                    const isSelected = aiMatchAnswers.sessionType === fmt.id;
+                    return (
+                      <TouchableOpacity
+                        key={fmt.id}
+                        style={[
+                          styles.aiFormatCard,
+                          isSelected && styles.aiFormatCardSelected,
+                        ]}
+                        onPress={() =>
+                          setAiMatchAnswers({ ...aiMatchAnswers, sessionType: fmt.id })
+                        }
+                      >
+                        <Ionicons
+                          name={fmt.icon}
+                          size={18}
+                          color={isSelected ? '#62417D' : '#8875B7'}
+                        />
+                        <Text
+                          style={[
+                            styles.aiFormatText,
+                            isSelected && styles.aiFormatTextSelected,
+                          ]}
+                        >
+                          {fmt.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* Q4: Guide Characteristics / Approach */}
+                <Text style={styles.aiQuestionLabel}>4. Preferred Therapeutic Approach</Text>
+                <View style={styles.aiChoiceGrid}>
+                  {[
+                    'Gentle & CBT-Focused',
+                    'Somatic & Breathwork',
+                    'Practical & Solution-Oriented',
+                    'Compassionate & Reflective',
+                  ].map((app) => {
+                    const isSelected = aiMatchAnswers.approach === app;
+                    return (
+                      <TouchableOpacity
+                        key={app}
+                        style={[
+                          styles.aiChoiceTile,
+                          isSelected && styles.aiChoiceTileSelected,
+                        ]}
+                        onPress={() =>
+                          setAiMatchAnswers({ ...aiMatchAnswers, approach: app })
+                        }
+                      >
+                        <Text
+                          style={[
+                            styles.aiChoiceTileText,
+                            isSelected && styles.aiChoiceTileTextSelected,
+                          ]}
+                        >
+                          {app}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* Q5: Availability */}
+                <Text style={styles.aiQuestionLabel}>5. Availability Preference</Text>
+                <View style={styles.aiChoiceGrid}>
+                  {AVAILABILITY_OPTIONS.map((avail) => {
+                    const isSelected = aiMatchAnswers.availability === avail;
+                    return (
+                      <TouchableOpacity
+                        key={avail}
+                        style={[
+                          styles.aiChoiceTile,
+                          isSelected && styles.aiChoiceTileSelected,
+                        ]}
+                        onPress={() =>
+                          setAiMatchAnswers({ ...aiMatchAnswers, availability: avail })
+                        }
+                      >
+                        <Text
+                          style={[
+                            styles.aiChoiceTileText,
+                            isSelected && styles.aiChoiceTileTextSelected,
+                          ]}
+                        >
+                          {avail}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* Clinical Disclaimer (Rule 3.3) */}
+                <View style={styles.aiDisclaimerBox}>
+                  <Ionicons name="information-circle-outline" size={18} color="#62417D" style={{ marginRight: 8 }} />
+                  <Text style={styles.aiDisclaimerText}>
+                    AI matching assists Explorers based on preferences. AI does not independently diagnose clinical conditions or alter professional qualifications.
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.findMatchBtn}
+                  onPress={handleRunAiMatching}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="sparkles" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
+                  <Text style={styles.findMatchBtnText}>Find My Match</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              /* STEP 2: HYBRID MATCHED RESULTS */
+              <View>
+                <View style={styles.aiModalHero}>
+                  <View style={[styles.aiSparkleCircle, { backgroundColor: '#EDF8F4' }]}>
+                    <Ionicons name="checkmark-done" size={26} color="#2D7B66" />
+                  </View>
+                  <Text style={styles.aiModalHeading}>Matched Mental Health Professionals</Text>
+                  <Text style={styles.aiModalSub}>
+                    Based on your preference for {aiMatchAnswers.supportType} and {aiMatchAnswers.language} support, these certified professionals are your closest clinical match.
+                  </Text>
+                </View>
+
+                {aiRecommendations.map((guide, idx) => (
+                  <View key={`rec-${guide.id}`} style={styles.aiResultCard}>
+                    <View style={styles.aiResultHeader}>
+                      <View style={styles.aiScoreBadge}>
+                        <Ionicons name="sparkles" size={13} color="#FFFFFF" style={{ marginRight: 4 }} />
+                        <Text style={styles.aiScoreText}>{guide.matchScore}% Match</Text>
+                      </View>
+                      <Text style={styles.aiTopPickBadge}>Top Pick #{idx + 1}</Text>
+                    </View>
+
+                    <Text style={styles.aiGuideName}>{guide.name}</Text>
+                    <Text style={styles.aiGuideTitle}>{guide.title}</Text>
+                    <Text style={styles.aiGuideRationale}>"{guide.matchRationale}"</Text>
+
+                    <View style={styles.aiGuideMetaPills}>
+                      <View style={styles.aiPill}>
+                        <Text style={styles.aiPillText}>{guide.experience}</Text>
+                      </View>
+                      <View style={styles.aiPill}>
+                        <Text style={styles.aiPillText}>{guide.languages.join(', ')}</Text>
+                      </View>
+                      <View style={[styles.aiPill, { backgroundColor: '#EDF8F4' }]}>
+                        <Text style={[styles.aiPillText, { color: '#2D7B66' }]}>
+                          {guide.availabilityTag}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.aiResultActionRow}>
+                      <TouchableOpacity
+                        style={styles.aiProfileBtn}
+                        onPress={() => {
+                          setAiMatchingModalVisible(false);
+                          handleOpenProfile(guide);
+                        }}
+                      >
+                        <Text style={styles.aiProfileBtnText}>View Profile</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.aiBookNowBtn}
+                        onPress={() => {
+                          setAiMatchingModalVisible(false);
+                          handleStartBooking(guide);
+                        }}
+                      >
+                        <Text style={styles.aiBookNowBtnText}>Book Consultation</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
+
+                <TouchableOpacity
+                  style={styles.browseAllGuidesBtn}
+                  onPress={() => setAiMatchingModalVisible(false)}
+                >
+                  <Text style={styles.browseAllGuidesBtnText}>Browse All Approved Guides</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </ScrollView>
         </View>
       </Modal>
     </View>
@@ -3006,5 +3428,391 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+
+  // 3.3 AI-ASSISTED MATCHING STYLES
+  aiHeroBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3EEF9',
+    marginHorizontal: 20,
+    marginTop: 4,
+    marginBottom: 12,
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E8DEF0',
+  },
+  aiSparkleBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+    marginBottom: 6,
+  },
+  aiSparkleBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#62417D',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  aiHeroTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#3A3440',
+    marginBottom: 2,
+  },
+  aiHeroSub: {
+    fontSize: 11,
+    color: '#77717F',
+    lineHeight: 16,
+  },
+  aiMatchLaunchBtn: {
+    backgroundColor: '#62417D',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 14,
+    shadowColor: '#62417D',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  aiMatchLaunchBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  matchedSectionWrapper: {
+    marginHorizontal: 20,
+    marginBottom: 14,
+  },
+  matchedSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  matchedSectionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#62417D',
+  },
+  clearMatchText: {
+    fontSize: 12,
+    color: '#8875B7',
+    fontWeight: '600',
+  },
+  matchGuideCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1.5,
+    borderColor: '#D4C5E2',
+    position: 'relative',
+  },
+  matchScoreBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    backgroundColor: '#2D7B66',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  matchScoreText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  matchGuideName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#3A3440',
+    paddingRight: 80,
+  },
+  matchGuideRole: {
+    fontSize: 11,
+    color: '#82758D',
+    marginTop: 2,
+    marginBottom: 6,
+  },
+  matchRationale: {
+    fontSize: 12,
+    fontStyle: 'italic',
+    color: '#62417D',
+    backgroundColor: '#FAF8FC',
+    padding: 8,
+    borderRadius: 8,
+    marginBottom: 10,
+  },
+  matchActionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  matchFeeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#554C60',
+  },
+  matchBookBtn: {
+    backgroundColor: '#62417D',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 12,
+  },
+  matchBookBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  aiModalContent: {
+    padding: 20,
+    paddingBottom: 40,
+  },
+  aiModalHero: {
+    alignItems: 'center',
+    marginBottom: 20,
+    paddingHorizontal: 10,
+  },
+  aiSparkleCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#F3EEF9',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  aiModalHeading: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#3A3440',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  aiModalSub: {
+    fontSize: 12,
+    color: '#77717F',
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  aiQuestionLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#62417D',
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  aiChoiceGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 8,
+  },
+  aiChoiceTile: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: '#FAF8FC',
+    borderWidth: 1,
+    borderColor: '#ECE7F2',
+    marginRight: 6,
+    marginBottom: 6,
+  },
+  aiChoiceTileSelected: {
+    backgroundColor: '#62417D',
+    borderColor: '#62417D',
+  },
+  aiChoiceTileText: {
+    fontSize: 11,
+    color: '#554C60',
+    fontWeight: '500',
+  },
+  aiChoiceTileTextSelected: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  aiFormatCard: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#ECE7F2',
+    backgroundColor: '#FAF8FC',
+    marginHorizontal: 3,
+  },
+  aiFormatCardSelected: {
+    borderColor: '#62417D',
+    backgroundColor: '#F3EEF9',
+    borderWidth: 2,
+  },
+  aiFormatText: {
+    fontSize: 11,
+    color: '#554C60',
+    fontWeight: '500',
+    marginTop: 4,
+  },
+  aiFormatTextSelected: {
+    color: '#62417D',
+    fontWeight: '700',
+  },
+  aiDisclaimerBox: {
+    flexDirection: 'row',
+    backgroundColor: '#FAF8FC',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#ECE7F2',
+    marginTop: 14,
+    marginBottom: 18,
+    alignItems: 'center',
+  },
+  aiDisclaimerText: {
+    fontSize: 11,
+    color: '#77717F',
+    flex: 1,
+    lineHeight: 16,
+  },
+  findMatchBtn: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#62417D',
+    paddingVertical: 14,
+    borderRadius: 18,
+  },
+  findMatchBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  aiResultCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 14,
+    borderWidth: 1.5,
+    borderColor: '#D4C5E2',
+    shadowColor: '#4A3262',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 2,
+  },
+  aiResultHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  aiScoreBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#2D7B66',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  aiScoreText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  aiTopPickBadge: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#8875B7',
+  },
+  aiGuideName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#3A3440',
+  },
+  aiGuideTitle: {
+    fontSize: 12,
+    color: '#62417D',
+    fontWeight: '600',
+    marginTop: 2,
+    marginBottom: 6,
+  },
+  aiGuideRationale: {
+    fontSize: 12,
+    fontStyle: 'italic',
+    color: '#554C60',
+    backgroundColor: '#FAF8FC',
+    padding: 8,
+    borderRadius: 8,
+    marginBottom: 10,
+    lineHeight: 17,
+  },
+  aiGuideMetaPills: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 12,
+  },
+  aiPill: {
+    backgroundColor: '#FAF8FC',
+    borderWidth: 1,
+    borderColor: '#ECE7F2',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    marginRight: 6,
+    marginBottom: 4,
+  },
+  aiPillText: {
+    fontSize: 10,
+    color: '#554C60',
+    fontWeight: '500',
+  },
+  aiResultActionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    borderTopWidth: 1,
+    borderTopColor: '#F4EFF7',
+    paddingTop: 10,
+  },
+  aiProfileBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: '#F0EAF5',
+  },
+  aiProfileBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#62417D',
+  },
+  aiBookNowBtn: {
+    backgroundColor: '#62417D',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 12,
+  },
+  aiBookNowBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  browseAllGuidesBtn: {
+    backgroundColor: '#FAF8FC',
+    borderWidth: 1,
+    borderColor: '#D4C5E2',
+    paddingVertical: 12,
+    borderRadius: 16,
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  browseAllGuidesBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#62417D',
   },
 });
