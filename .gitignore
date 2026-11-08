@@ -1,0 +1,8 @@
+# Logs and caches
+.npm-cache/
+.DS_Store
+*.log
+
+# Environment variables
+.env
+.env*.local
