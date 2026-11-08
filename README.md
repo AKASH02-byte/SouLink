@@ -103,3 +103,4 @@ From the terminal:
 ## 📄 License
 
 This project is licensed under the terms specified in the [`frontend/LICENSE`](frontend/LICENSE) file.
+
